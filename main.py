@@ -34,7 +34,7 @@ async def ask(request: AskRequest):
 
     try:
         # 3. Call Google Gemini AI
-        model = genai.GenerativeModel('gemini-pro')
+        model = genai.GenerativeModel('gemini-1.5-flash')
         
         # We give the AI a "persona" instruction
         prompt = (
