@@ -62,3 +62,22 @@ async def ask(request: AskRequest):
             "progress_boost": 0
         }
         
+# -------- DIAGNOSTIC TOOL (Delete later) --------
+@app.get("/check-models")
+def check_models():
+    try:
+        import google.generativeai as genai
+        available = []
+        # Ask Google what models are available for this specific Key
+        for m in genai.list_models():
+            if 'generateContent' in m.supported_generation_methods:
+                available.append(m.name)
+        
+        # Print to Render Logs so you can see it there
+        print(f"--- AVAILABLE MODELS: {available} ---")
+        
+        return {"status": "success", "models": available}
+    except Exception as e:
+        print(f"--- ERROR CHECKING MODELS: {e} ---")
+        return {"status": "error", "message": str(e)}
+        
