@@ -40,25 +40,40 @@ async def ask(request: AskRequest):
         raise HTTPException(status_code=400, detail="Query cannot be empty")
 
     try:
-        # THE AI CALL (The Brain Transplant)
-        # We use 'llama-3.3-70b-versatile' (Smart & Fast)
-        chat_completion = client.chat.completions.create(
-            messages=[
-                {
-                    "role": "system",
-                    "content": (
-                        "You are an expert UPSC Tutor for Indian Polity. "
-                        "Answer clearly, strictly based on the Constitution of India. "
-                        "Keep answers concise (under 100 words) for a chat interface."
-                    )
-                },
-                {
-                    "role": "user",
-                    "content": request.user_query,
-                }
-            ],
-            model="llama-3.3-70b-versatile",
-        )
+            # --- START OF NEW BRAIN CODE ---
+    
+    # 1. Define the Smart Mentor Persona
+    system_prompt = """
+    You are 'PolicyPath AI', an expert UPSC Civil Services Mentor for Indian Polity.
+    Your Goal: Guide the student to mastery using the "Socratic Method".
+
+    STRICT RULES:
+    1. CONCISE: Keep answers under 150 words. Use bullet points.
+    2. CONTEXT AWARE: If the user asks "What next?", DO NOT just explain the previous topic. 
+       - Instead, suggest the NEXT logical topic in the syllabus.
+       - Sequence: Preamble -> Union & Territory (Art 1-4) -> Citizenship (Art 5-11) -> Fundamental Rights (Art 12-35).
+    3. TONE: Encouraging but strict coach.
+    4. CITATION: Always end with a source (e.g., [Source: Constitution of India]).
+    """
+
+    # 2. Call the AI
+    chat_completion = client.chat.completions.create(
+        messages=[
+            {
+                "role": "system",
+                "content": system_prompt
+            },
+            {
+                "role": "user",
+                "content": request.user_query
+            }
+        ],
+        model="llama-3.3-70b-versatile",
+        temperature=0.7 
+    )
+    
+    # --- END OF NEW BRAIN CODE ---
+    
 
         # Extract the text answer
         ai_text = chat_completion.choices[0].message.content
