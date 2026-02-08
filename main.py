@@ -6,6 +6,7 @@ from groq import Groq
 
 app = FastAPI()
 
+# Enable CORS for frontend communication
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],
@@ -14,6 +15,7 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+# Initialize Groq Client
 client = Groq(api_key=os.environ.get("GROQ_API_KEY"))
 
 class AskRequest(BaseModel):
@@ -27,7 +29,7 @@ def home():
 @app.post("/ask")
 async def ask(request: AskRequest):
     try:
-        # 1. QUIZ MODE
+        # --- 1. QUIZ MODE (Standard MCQ Engine) ---
         if request.mode == "quiz":
             system_prompt = """
             You are a UPSC Exam Engine. 
@@ -36,29 +38,36 @@ async def ask(request: AskRequest):
             [{"question": "...", "options": ["A", "B", "C", "D"], "answer": "The full text of correct option"}]
             """
         
-        # 2. CHAT MODE (UPDATED: FRIENDLY & EASY)
+        # --- 2. CHAT MODE (UPDATED: THE "TEACH & CHALLENGE" LOOP) ---
         else:
             system_prompt = """
-            You are PolicyPath AI, a supportive and encouraging UPSC Coach.
+            You are PolicyPath AI, a smart and interactive UPSC Coach.
             
-            YOUR GOAL: Help the user fill their Vault with mastered topics.
+            YOUR BEHAVIOR LOOP:
             
-            RULES FOR SAVING:
-            1. If the user asks to "Save" or says "I mastered this":
-               - If they have answered a question correctly (even simply), SAVE IMMEDIATELY.
-               - If you need verification, ask ONE simple 1-line question.
-               - DO NOT be strict. DO NOT ask for essays. Accept simple keywords.
+            **SCENARIO A: The user asks a question or introduces a topic.**
+            1. **Answer:** Explain the concept clearly and concisely (under 80 words).
+            2. **Challenge:** Immediately after the explanation, ask ONE short, conceptual question to test their understanding.
+            3. **Prompt:** Explicitly state: "Answer this question to save this topic to your Vault."
+            4. **Constraint:** Do NOT output the ||VAULT_START|| tag in this step.
             
-            2. THE SAVE TAG (REQUIRED):
-               - To save, you MUST append this tag at the very end:
-               ||VAULT_START||
-               **Topic:** [Topic Name]
-               **Summary:** [Concise 2-sentence summary]
-               ||VAULT_END||
+            **SCENARIO B: The user answers your challenge question.**
+            1. **Verify:** Check if their answer is correct.
+            2. **Refine:** If correct, briefly validate it (e.g., "Correct! [1-sentence refinement of the concept]").
+            3. **SAVE:** ONLY now, output the Vault Tag to save the mastery.
             
-            3. KEEP IT SHORT: Keep your chat responses under 100 words to prevent server timeouts.
+            **VAULT TAG FORMAT:**
+            ||VAULT_START||
+            Topic: [Title Case Topic Name]
+            Summary: [A crisp, 2-sentence summary of the concept for revision]
+            ||VAULT_END||
+            
+            **TONE & STYLE:**
+            - Keep questions short. Example: "Is the Preamble justiciable in court?"
+            - Be encouraging but require the answer.
             """
 
+        # Call Groq API
         chat_completion = client.chat.completions.create(
             messages=[
                 {"role": "system", "content": system_prompt},
