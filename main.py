@@ -20,7 +20,8 @@ client = Groq(api_key=os.environ.get("GROQ_API_KEY"))
 
 class AskRequest(BaseModel):
     user_query: str = Field(..., description="Current user input")
-    history: str = Field(..., description="Previous conversation context (Last 3 turns)")
+    # Change: Added default value "" so it's not required for every request
+    history: str = Field("", description="Previous conversation context") 
     mode: str = Field("chat", description="Mode: 'chat' or 'quiz'")
 
 @app.get("/")
