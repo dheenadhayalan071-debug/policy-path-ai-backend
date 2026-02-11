@@ -38,7 +38,13 @@ async def ask(request: AskRequest):
             Generate exactly 10 high-quality, conceptual MCQ questions based on the provided topics.
             Include confusing options to test clarity.
             OUTPUT FORMAT: PURE JSON ARRAY ONLY.
-            [{"question": "...", "options": ["A", "B", "C", "D"], "answer": "The full text of correct option"}]
+            [
+              {
+                "question": "Which Article protects Life and Personal Liberty?", 
+                "options": ["Article 14", "Article 19", "Article 21", "Article 32"], 
+                "answer": "Article 21"
+              }
+            ]
             """
             
             messages = [
