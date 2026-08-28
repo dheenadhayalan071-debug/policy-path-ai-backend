@@ -140,7 +140,7 @@ async def ask(request: AskRequest):
         # Call Groq API
         chat_completion = client.chat.completions.create(
             messages=messages,
-            model="llama-3.3-70b-versatile",
+            model="llama-3.1-8b-instant",  # <--- THE FIX: Swapped to the free-tier model
             temperature=0.4, 
             max_tokens=1200
         )
@@ -150,4 +150,3 @@ async def ask(request: AskRequest):
     except Exception as e:
         print(f"Error: {e}")
         raise HTTPException(status_code=500, detail=str(e))
-            
