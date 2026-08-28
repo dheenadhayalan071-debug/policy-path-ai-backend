@@ -6,7 +6,7 @@ from groq import Groq
 
 app = FastAPI()
 
-# Enable CORS for frontend communication (FIXED)
+# Enable CORS for frontend communication
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["https://policy-path-theta.vercel.app"],
@@ -20,7 +20,6 @@ client = Groq(api_key=os.environ.get("GROQ_API_KEY"))
 
 class AskRequest(BaseModel):
     user_query: str = Field(..., description="Current user input")
-    # Change: Added default value "" so it's not required for every request
     history: str = Field("", description="Previous conversation context") 
     mode: str = Field("chat", description="Mode: 'chat' or 'quiz'")
 
@@ -33,7 +32,6 @@ async def ask(request: AskRequest):
     try:
         # --- 1. QUIZ MODE (Standard MCQ Engine) ---
         if request.mode == "quiz":
-            # STRICT JSON PROMPT FIX APPLIED HERE
             system_prompt = """
             You are a strict UPSC Examiner. 
             Generate exactly 10 high-quality, conceptual MCQ questions based on the provided topics.
@@ -146,12 +144,22 @@ async def ask(request: AskRequest):
         # Call Groq API
         chat_completion = client.chat.completions.create(
             messages=messages,
-            model="openai/gpt-oss-20b",  # <--- ACTIVE 2026 FREE-TIER MODEL
+            model="openai/gpt-oss-20b",
             temperature=0.4, 
             max_tokens=1200
         )
+        
+        answer_text = chat_completion.choices[0].message.content
 
-        return {"answer": chat_completion.choices[0].message.content}
+        # --- THE BULLETPROOF JSON EXTRACTOR ---
+        # This physically cuts out any conversational garbage the AI tries to add
+        if request.mode == "quiz":
+            start_idx = answer_text.find('[')
+            end_idx = answer_text.rfind(']')
+            if start_idx != -1 and end_idx != -1 and end_idx > start_idx:
+                answer_text = answer_text[start_idx:end_idx+1]
+
+        return {"answer": answer_text}
 
     except Exception as e:
         print(f"Error: {e}")
