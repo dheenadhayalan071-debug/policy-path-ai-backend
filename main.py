@@ -6,10 +6,10 @@ from groq import Groq
 
 app = FastAPI()
 
-# Enable CORS for frontend communication
+# Enable CORS for frontend communication (FIXED)
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],
+    allow_origins=["https://policy-path-theta.vercel.app"],
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
