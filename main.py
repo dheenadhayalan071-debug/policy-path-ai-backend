@@ -140,7 +140,7 @@ async def ask(request: AskRequest):
         # Call Groq API
         chat_completion = client.chat.completions.create(
             messages=messages,
-            model="llama-3.1-8b-instant",  # <--- THE FIX: Swapped to the free-tier model
+            model="openai/gpt-oss-20b",  # <--- THE FIX: Swapped to the free-tier model
             temperature=0.4, 
             max_tokens=1200
         )
