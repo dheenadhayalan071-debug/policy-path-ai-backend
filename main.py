@@ -33,11 +33,17 @@ async def ask(request: AskRequest):
     try:
         # --- 1. QUIZ MODE (Standard MCQ Engine) ---
         if request.mode == "quiz":
+            # STRICT JSON PROMPT FIX APPLIED HERE
             system_prompt = """
             You are a strict UPSC Examiner. 
             Generate exactly 10 high-quality, conceptual MCQ questions based on the provided topics.
             Include confusing options to test clarity.
-            OUTPUT FORMAT: PURE JSON ARRAY ONLY.
+            
+            CRITICAL INSTRUCTION: OUTPUT A PURE JSON ARRAY ONLY. 
+            DO NOT INCLUDE ANY CONVERSATIONAL TEXT. 
+            DO NOT USE MARKDOWN (DO NOT WRAP IN ```json). 
+            START EXACTLY WITH [ AND END EXACTLY WITH ].
+            
             [
               {
                 "question": "Which Article protects Life and Personal Liberty?", 
@@ -140,7 +146,7 @@ async def ask(request: AskRequest):
         # Call Groq API
         chat_completion = client.chat.completions.create(
             messages=messages,
-            model="openai/gpt-oss-20b",  # <--- THE FIX: Swapped to the free-tier model
+            model="openai/gpt-oss-20b",  # <--- ACTIVE 2026 FREE-TIER MODEL
             temperature=0.4, 
             max_tokens=1200
         )
