@@ -2,6 +2,7 @@ from fastapi import FastAPI, HTTPException
 from pydantic import BaseModel, Field
 from fastapi.middleware.cors import CORSMiddleware
 import os
+import json
 from groq import Groq
 
 app = FastAPI()
@@ -30,31 +31,45 @@ def home():
 @app.post("/ask")
 async def ask(request: AskRequest):
     try:
-        # --- 1. QUIZ MODE (Standard MCQ Engine) ---
+        # --- 1. QUIZ MODE (Strict JSON Object Engine) ---
         if request.mode == "quiz":
             system_prompt = """
             You are a strict UPSC Examiner. 
             Generate exactly 10 high-quality, conceptual MCQ questions based on the provided topics.
             Include confusing options to test clarity.
             
-            CRITICAL INSTRUCTION: OUTPUT A PURE JSON ARRAY ONLY. 
-            DO NOT INCLUDE ANY CONVERSATIONAL TEXT. 
-            DO NOT USE MARKDOWN (DO NOT WRAP IN ```json). 
-            START EXACTLY WITH [ AND END EXACTLY WITH ].
-            
-            [
-              {
-                "question": "Which Article protects Life and Personal Liberty?", 
-                "options": ["Article 14", "Article 19", "Article 21", "Article 32"], 
-                "answer": "Article 21"
-              }
-            ]
+            CRITICAL INSTRUCTION: OUTPUT A VALID JSON OBJECT ONLY.
+            Use the exact schema below with a single root key "questions":
+            {
+              "questions": [
+                {
+                  "question": "Which Article protects Life and Personal Liberty?", 
+                  "options": ["Article 14", "Article 19", "Article 21", "Article 32"], 
+                  "answer": "Article 21"
+                }
+              ]
+            }
             """
             
             messages = [
                 {"role": "system", "content": system_prompt},
                 {"role": "user", "content": request.user_query}
             ]
+
+            chat_completion = client.chat.completions.create(
+                messages=messages,
+                model="llama-3.3-70b-versatile",
+                temperature=0.3,
+                max_tokens=3000,
+                response_format={"type": "json_object"}
+            )
+            
+            raw_json = chat_completion.choices[0].message.content
+            parsed_data = json.loads(raw_json)
+            questions_list = parsed_data.get("questions", [])
+            
+            # Return serialized pure JSON array string so existing frontend JSON.parse() works immediately
+            return {"answer": json.dumps(questions_list)}
         
         # --- 2. CHAT MODE (The "Fused" Brain) ---
         else:
@@ -141,26 +156,17 @@ async def ask(request: AskRequest):
                 {"role": "user", "content": full_context}
             ]
 
-        # Call Groq API
-        chat_completion = client.chat.completions.create(
-            messages=messages,
-            model="openai/gpt-oss-20b",
-            temperature=0.4, 
-            max_tokens=1200
-        )
-        
-        answer_text = chat_completion.choices[0].message.content
-
-        # --- THE BULLETPROOF JSON EXTRACTOR ---
-        # This physically cuts out any conversational garbage the AI tries to add
-        if request.mode == "quiz":
-            start_idx = answer_text.find('[')
-            end_idx = answer_text.rfind(']')
-            if start_idx != -1 and end_idx != -1 and end_idx > start_idx:
-                answer_text = answer_text[start_idx:end_idx+1]
-
-        return {"answer": answer_text}
+            chat_completion = client.chat.completions.create(
+                messages=messages,
+                model="openai/gpt-oss-20b",
+                temperature=0.4, 
+                max_tokens=1500
+            )
+            
+            answer_text = chat_completion.choices[0].message.content
+            return {"answer": answer_text}
 
     except Exception as e:
         print(f"Error: {e}")
         raise HTTPException(status_code=500, detail=str(e))
+            
