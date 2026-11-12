@@ -1,7 +1,6 @@
 import json
 import logging
 import os
-import traceback
 from typing import Any
 
 from fastapi import FastAPI, HTTPException
@@ -39,12 +38,12 @@ class AskRequest(BaseModel):
     mode: str = Field("chat", description="Mode: 'chat' or 'quiz'")
 
 
-@app.get("/")
+@app.api_route("/", methods=["GET", "HEAD"])
 def home():
     return {"status": "alive"}
 
 
-@app.get("/health")
+@app.api_route("/health", methods=["GET", "HEAD"])
 def health():
     return {"status": "alive"}
 
@@ -103,7 +102,7 @@ async def ask(request: AskRequest):
 
         CRITICAL INSTRUCTION: OUTPUT A VALID JSON OBJECT ONLY.
         Use the exact schema below with a single root key "questions". Every question must have
-        a non-empty question string, an options array of strings, and an answer that exactly
+        a non-empty question string, an options array of 4 strings, and an answer that exactly
         matches one of those options:
         {
           "questions": [
@@ -115,20 +114,30 @@ async def ask(request: AskRequest):
           ]
         }
         """
-        try:
-            chat_completion = groq_client.chat.completions.create(
-                messages=[
-                    {"role": "system", "content": system_prompt},
-                    {"role": "user", "content": request.user_query.strip()},
-                ],
-                model="llama-3.3-70b-versatile",
-                temperature=0.3,
-                max_tokens=3000,
-                response_format={"type": "json_object"},
-            )
-        except Exception as exc:
-            logger.exception("Groq quiz completion request failed")
-            raise HTTPException(status_code=500, detail="Quiz generation failed.") from exc
+        quiz_models = ["openai/gpt-oss-20b", "llama-3.1-8b-instant"]
+        chat_completion = None
+        last_exc: Exception | None = None
+
+        for model_name in quiz_models:
+            try:
+                chat_completion = groq_client.chat.completions.create(
+                    messages=[
+                        {"role": "system", "content": system_prompt},
+                        {"role": "user", "content": request.user_query.strip()},
+                    ],
+                    model=model_name,
+                    temperature=0.3,
+                    max_tokens=3000,
+                    response_format={"type": "json_object"},
+                )
+                break
+            except Exception as exc:
+                logger.warning("Groq quiz request failed for model %s: %s", model_name, exc)
+                last_exc = exc
+
+        if chat_completion is None:
+            logger.error("All Groq quiz models failed", exc_info=last_exc)
+            raise HTTPException(status_code=500, detail="Quiz generation failed.") from last_exc
 
         raw_json = chat_completion.choices[0].message.content
         try:
@@ -236,3 +245,4 @@ async def ask(request: AskRequest):
         logger.error("Groq chat completion returned an empty or non-text response")
         raise HTTPException(status_code=500, detail="Chat response generation returned invalid data.")
     return {"answer": answer_text}
+    
