@@ -14,6 +14,28 @@ from slowapi.errors import RateLimitExceeded
 from slowapi.util import get_remote_address
 
 # ---------------------------------------------------------------------------
+# Sentry Crash Reporting Setup
+# ---------------------------------------------------------------------------
+import sentry_sdk
+from sentry_sdk.integrations.fastapi import FastApiIntegration
+
+SENTRY_DSN = os.environ.get("SENTRY_DSN")
+
+if SENTRY_DSN:
+    sentry_sdk.init(
+        dsn=SENTRY_DSN,
+        integrations=[FastApiIntegration()],
+        # Set traces_sample_rate to 1.0 to capture 100% of transactions for performance monitoring.
+        traces_sample_rate=0.2,
+        # Capture 100% of errors
+        sample_rate=1.0,
+        environment=os.environ.get("ENVIRONMENT", "production"),
+    )
+    logging.info("⚡ Sentry monitoring active.")
+else:
+    logging.warning("⚠️ SENTRY_DSN is not set. Error tracking disabled.")
+
+# ---------------------------------------------------------------------------
 # Logging
 # ---------------------------------------------------------------------------
 logging.basicConfig(level=logging.INFO)
