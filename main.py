@@ -8,7 +8,7 @@ from fastapi import Depends, FastAPI, Header, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel, Field
-from groq import Groq
+from groq import AsyncGroq  # <--- Changed to Async client for non-blocking I/O
 from slowapi import Limiter
 from slowapi.errors import RateLimitExceeded
 from slowapi.util import get_remote_address
@@ -25,9 +25,7 @@ if SENTRY_DSN:
     sentry_sdk.init(
         dsn=SENTRY_DSN,
         integrations=[FastApiIntegration()],
-        # Set traces_sample_rate to 1.0 to capture 100% of transactions for performance monitoring.
         traces_sample_rate=0.2,
-        # Capture 100% of errors
         sample_rate=1.0,
         environment=os.environ.get("ENVIRONMENT", "production"),
     )
@@ -83,10 +81,10 @@ def _rate_limit_handler(request: Request, exc: RateLimitExceeded):
 app.add_exception_handler(RateLimitExceeded, _rate_limit_handler)
 
 # ---------------------------------------------------------------------------
-# Groq client
+# Async Groq client
 # ---------------------------------------------------------------------------
 _groq_api_key = os.environ.get("GROQ_API_KEY")
-client = Groq(api_key=_groq_api_key) if _groq_api_key else None
+client = AsyncGroq(api_key=_groq_api_key) if _groq_api_key else None
 if not _groq_api_key:
     logger.warning(
         "GROQ_API_KEY is not set; /ask requests cannot reach Groq until it is configured."
@@ -126,7 +124,7 @@ async def get_current_user(
     """
     Read Bearer token from Authorization header.
     Valid Supabase JWT → logged-in user.
-    Missing / invalid → guest (still allowed, tighter rate limit possible later).
+    Missing / invalid → guest.
     """
     if not authorization or not authorization.startswith("Bearer "):
         return AuthUser(is_guest=True)
@@ -189,7 +187,7 @@ def sanitize_query(text: str) -> str:
 
 
 # ---------------------------------------------------------------------------
-# Request model — KEEP history as string (frontend contract)
+# Request model
 # ---------------------------------------------------------------------------
 class AskRequest(BaseModel):
     user_query: str = Field(..., description="Current user input")
@@ -218,7 +216,7 @@ def health():
 
 
 # ---------------------------------------------------------------------------
-# Quiz validator (unchanged contract)
+# Quiz validator
 # ---------------------------------------------------------------------------
 def _get_questions(parsed_data: Any) -> list[dict[str, Any]]:
     """Validate the model response against the quiz response contract."""
@@ -254,7 +252,7 @@ def _get_questions(parsed_data: Any) -> list[dict[str, Any]]:
     return questions
 
 
-def _require_groq_client() -> Groq:
+def _require_groq_client() -> AsyncGroq:
     if client is None:
         raise HTTPException(
             status_code=500,
@@ -264,7 +262,7 @@ def _require_groq_client() -> Groq:
 
 
 # ---------------------------------------------------------------------------
-# POST /ask — secured, same response shape as before
+# POST /ask — Asynchronous, Rate-Limited & Auth-Aware
 # ---------------------------------------------------------------------------
 @app.post("/ask")
 @limiter.limit("20/minute")
@@ -273,10 +271,10 @@ async def ask(
     body: AskRequest,
     user: AuthUser = Depends(get_current_user),
 ):
-    # 1. Sanitize
+    # 1. Sanitize input
     clean_query = sanitize_query(body.user_query)
 
-    # 2. Log (never log full token / key)
+    # 2. Structured log
     logger.info(
         "ask mode=%s guest=%s user_id=%s query_len=%d",
         body.mode,
@@ -322,7 +320,8 @@ async def ask(
 
         for model_name in quiz_models:
             try:
-                chat_completion = groq_client.chat.completions.create(
+                # Async API Call
+                chat_completion = await groq_client.chat.completions.create(
                     messages=[
                         {"role": "system", "content": system_prompt},
                         {"role": "user", "content": clean_query},
@@ -339,6 +338,8 @@ async def ask(
 
         if chat_completion is None:
             logger.error("All Groq quiz models failed", exc_info=last_exc)
+            if SENTRY_DSN and last_exc:
+                sentry_sdk.capture_exception(last_exc)
             raise HTTPException(status_code=500, detail="Quiz generation failed.") from last_exc
 
         raw_json = chat_completion.choices[0].message.content
@@ -347,15 +348,16 @@ async def ask(
             questions_list = _get_questions(parsed_data)
         except (json.JSONDecodeError, TypeError, ValueError) as exc:
             logger.exception("Groq returned invalid quiz JSON or schema")
+            if SENTRY_DSN:
+                sentry_sdk.capture_exception(exc)
             raise HTTPException(
                 status_code=500, detail="Quiz generation returned invalid data."
             ) from exc
 
-        # Frontend contract: answer is a JSON string of the questions list
         return {"answer": json.dumps(questions_list, ensure_ascii=False)}
 
     # -----------------------------------------------------------------------
-    # CHAT MODE — exact mentor prompt preserved
+    # CHAT MODE — Mentor Logic
     # -----------------------------------------------------------------------
     syllabus = (
         "Basics -> Preamble -> Union & Territory -> Citizenship -> "
@@ -457,7 +459,6 @@ async def ask(
     "Namaste! 🙏 Main tumhara AI mentor hoon. Constitution, Polity, Economy — kuch bhi pucho. Chalo **Source of Authority** se shuru karte hain: Indian Constitution ko apni ultimate power kisse milti hai?"
     """
 
-    # history stays a STRING — do not change this
     full_context = (
         f"CONVERSATION HISTORY:\n{body.history}\n\n"
         f"CURRENT USER INPUT:\n{clean_query}"
@@ -469,7 +470,8 @@ async def ask(
 
     for model_name in chat_models:
         try:
-            chat_completion = groq_client.chat.completions.create(
+            # Async API Call
+            chat_completion = await groq_client.chat.completions.create(
                 messages=[
                     {"role": "system", "content": system_prompt},
                     {"role": "user", "content": full_context},
@@ -485,6 +487,8 @@ async def ask(
 
     if chat_completion is None:
         logger.error("All Groq chat models failed", exc_info=last_chat_exc)
+        if SENTRY_DSN and last_chat_exc:
+            sentry_sdk.capture_exception(last_chat_exc)
         raise HTTPException(
             status_code=500, detail="Chat response generation failed."
         ) from last_chat_exc
@@ -496,5 +500,4 @@ async def ask(
             status_code=500, detail="Chat response generation returned invalid data."
         )
 
-    # Frontend contract: {"answer": "<mentor text including optional ||VAULT_*|| tags>"}
     return {"answer": answer_text}
