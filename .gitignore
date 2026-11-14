@@ -1,3 +1,28 @@
-venv/
+# Python
 __pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+env/
+venv/
+ENV/
+.venv
+
+# Environment & Secrets (CRITICAL)
+.env
+.env.*
+!.env.example
+
+# IDEs
 .vscode/
+.idea/
+*.swp
+
+# Testing & Logs
+.pytest_cache/
+*.log
+logs/
+
+# Docker
+.docker/
